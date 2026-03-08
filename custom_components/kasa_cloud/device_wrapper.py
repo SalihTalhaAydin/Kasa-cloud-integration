@@ -31,6 +31,7 @@ class KasaDeviceWrapper:
         self._local_available: bool = False
         self._last_local_failure: float = 0.0
         self._connection_mode: str = CONN_MODE_CLOUD
+        self._is_parent: bool = False
 
     # --- Proxy cloud device attributes ---
 
@@ -81,7 +82,7 @@ class KasaDeviceWrapper:
 
     def has_children(self) -> bool:
         """Return True if device has child devices."""
-        return self._cloud.has_children()
+        return self._cloud.has_children() or self._is_parent
 
     async def get_children_async(self):
         """Return child devices."""

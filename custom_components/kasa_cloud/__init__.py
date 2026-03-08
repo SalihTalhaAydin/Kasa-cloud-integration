@@ -179,6 +179,8 @@ async def async_setup_entry(
             wrapper = KasaDeviceWrapper(device, parent_wrapper=parent)
             wrappers[wrapper.device_id] = wrapper
             wrapped_devices.append(wrapper)
+            if parent is not None:
+                parent._is_parent = True
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = KasaCloudCoordinator(hass, wrapped_devices, scan_interval)
