@@ -109,6 +109,8 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
                 {"brightness": brightness_pct, "duration": transition_ms},
             )
         elif brightness_pct is not None:
+            # set_brightness only sets level — must also turn on relay
+            await device.power_on()
             await device._pass_through_request(
                 "smartlife.iot.dimmer",
                 "set_brightness",
