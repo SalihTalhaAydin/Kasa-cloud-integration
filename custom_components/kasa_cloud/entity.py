@@ -6,7 +6,7 @@ from typing import Any
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import CONN_MODE_UNAVAILABLE, DOMAIN
 from .coordinator import KasaCloudCoordinator
 
 
@@ -56,6 +56,14 @@ class KasaCloudEntity(CoordinatorEntity[KasaCloudCoordinator]):
         if self.coordinator.data and self._device_id in self.coordinator.data:
             return self.coordinator.data[self._device_id]
         return {}
+
+    @property
+    def _connection_mode(self) -> str:
+        """Return the current connection mode for this device."""
+        device = self._device
+        if device is None:
+            return CONN_MODE_UNAVAILABLE
+        return device.connection_mode
 
     @property
     def available(self) -> bool:

@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import is_dimmer_device
+from .const import CONN_MODE_LOCAL, is_dimmer_device
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +49,15 @@ async def async_setup_entry(
         )
         entities.append(
             KasaCloudOnTimeSensor(
+                coordinator=coordinator,
+                device_id=device_id,
+                device_name=alias,
+                model=model,
+            )
+        )
+
+        entities.append(
+            KasaCloudConnectionModeSensor(
                 coordinator=coordinator,
                 device_id=device_id,
                 device_name=alias,
@@ -108,6 +117,30 @@ class KasaCloudOnTimeSensor(KasaCloudEntity, SensorEntity):
     def native_value(self) -> int | None:
         """Return the on-time in seconds."""
         return self._sys_info.get("on_time")
+
+
+class KasaCloudConnectionModeSensor(KasaCloudEntity, SensorEntity):
+    """Diagnostic sensor showing Local or Cloud connection mode."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, device_id, device_name, model) -> None:
+        """Initialize the connection mode sensor."""
+        super().__init__(coordinator, device_id, device_name, model)
+        self._attr_unique_id = f"kasa_cloud_{device_id}_connection_mode"
+        self._attr_name = "Connection mode"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current connection mode."""
+        return self._connection_mode
+
+    @property
+    def icon(self) -> str:
+        """Return icon based on connection mode."""
+        if self._connection_mode == CONN_MODE_LOCAL:
+            return "mdi:lan"
+        return "mdi:cloud"
 
 
 class KasaCloudAmbientLightSensor(KasaCloudEntity, SensorEntity):

@@ -22,7 +22,8 @@
       "init": {
         "title": "Kasa Cloud Options",
         "data": {
-          "scan_interval": "Polling interval (seconds, 0 to disable)"
+          "scan_interval": "Polling interval (seconds, 0 to disable)",
+          "local_control": "Enable local control (faster commands via LAN)"
         }
       }
     }

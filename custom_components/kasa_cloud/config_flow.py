@@ -10,7 +10,13 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResu
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
 
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_LOCAL_CONTROL,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_LOCAL_CONTROL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,8 +91,11 @@ class KasaCloudOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current = self._config_entry.options.get(
+        current_scan = self._config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        current_local = self._config_entry.options.get(
+            CONF_LOCAL_CONTROL, DEFAULT_LOCAL_CONTROL
         )
         return self.async_show_form(
             step_id="init",
@@ -94,8 +103,12 @@ class KasaCloudOptionsFlow(OptionsFlow):
                 {
                     vol.Required(
                         CONF_SCAN_INTERVAL,
-                        default=current,
+                        default=current_scan,
                     ): vol.All(vol.Coerce(int), vol.Range(min=0, max=300)),
+                    vol.Required(
+                        CONF_LOCAL_CONTROL,
+                        default=current_local,
+                    ): bool,
                 }
             ),
         )

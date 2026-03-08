@@ -5,7 +5,7 @@
   "config_flow": true,
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "requirements": ["tplink-cloud-api==4.2.1"],
+  "requirements": ["tplink-cloud-api==4.2.1", "python-kasa>=0.7.0"],
   "codeowners": ["@SalihTalhaAydin"],
   "documentation": "https://github.com/SalihTalhaAydin/Kasa-cloud-integration",
   "issue_tracker": "https://github.com/SalihTalhaAydin/Kasa-cloud-integration/issues"
