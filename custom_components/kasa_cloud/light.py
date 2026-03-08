@@ -87,6 +87,11 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
         # TP-Link uses 0-100, HA uses 0-255
         return round(brt * 255 / 100)
 
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"].update(updates)
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the dimmer on, optionally with brightness/transition."""
         device = self._device
@@ -109,7 +114,6 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
                 {"brightness": brightness_pct, "duration": transition_ms},
             )
         elif brightness_pct is not None:
-            # set_brightness only sets level — must also turn on relay
             await device.power_on()
             await device._pass_through_request(
                 "smartlife.iot.dimmer",
@@ -119,7 +123,12 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
         else:
             await device.power_on()
 
-        await self.coordinator.async_request_refresh()
+        # Optimistic update
+        updates = {"relay_state": 1}
+        if brightness_pct is not None:
+            updates["brightness"] = brightness_pct
+        self._update_sys_info(**updates)
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the dimmer off."""
@@ -140,7 +149,8 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
         else:
             await device.power_off()
 
-        await self.coordinator.async_request_refresh()
+        self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()
 
 
 class KasaCloudOnOffLight(KasaCloudEntity, LightEntity):
@@ -163,13 +173,19 @@ class KasaCloudOnOffLight(KasaCloudEntity, LightEntity):
             return None
         return relay == 1
 
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"].update(updates)
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         device = self._device
         if device is None:
             return
         await device.power_on()
-        await self.coordinator.async_request_refresh()
+        self._update_sys_info(relay_state=1)
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -177,4 +193,5 @@ class KasaCloudOnOffLight(KasaCloudEntity, LightEntity):
         if device is None:
             return
         await device.power_off()
-        await self.coordinator.async_request_refresh()
+        self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()

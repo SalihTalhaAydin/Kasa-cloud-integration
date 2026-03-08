@@ -126,4 +126,8 @@ class KasaCloudDimmerTimeNumber(KasaCloudEntity, NumberEntity):
             self._setting["set_method"],
             {self._setting["param_key"]: int(value)},
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            params = self.coordinator.data[self._device_id].get("dimmer_params")
+            if params:
+                params[self._setting["api_key"]] = int(value)
+        self.async_write_ha_state()

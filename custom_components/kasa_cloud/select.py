@@ -83,4 +83,8 @@ class KasaCloudMotionSensitivitySelect(KasaCloudEntity, SelectEntity):
         await device._pass_through_request(
             "smartlife.iot.PIR", "set_trigger_sens", {"index": index}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            pir = self.coordinator.data[self._device_id].get("pir_config")
+            if pir:
+                pir["trigger_index"] = index
+        self.async_write_ha_state()

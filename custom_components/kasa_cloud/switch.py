@@ -32,7 +32,6 @@ async def async_setup_entry(
         model = device.device_info.device_model if hasattr(device, "device_info") else "Unknown"
 
         # Main on/off switch — only for smart plugs (KP200).
-        # Dimmers and wall light switches use the light platform.
         if is_plug_device(device):
             entities.append(
                 KasaCloudSwitch(
@@ -101,7 +100,9 @@ class KasaCloudSwitch(KasaCloudEntity, SwitchEntity):
         if device is None:
             return
         await device.power_on()
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"]["relay_state"] = 1
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off via cloud."""
@@ -109,7 +110,9 @@ class KasaCloudSwitch(KasaCloudEntity, SwitchEntity):
         if device is None:
             return
         await device.power_off()
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"]["relay_state"] = 0
+        self.async_write_ha_state()
 
 
 class KasaCloudLEDSwitch(KasaCloudEntity, SwitchEntity):
@@ -137,7 +140,9 @@ class KasaCloudLEDSwitch(KasaCloudEntity, SwitchEntity):
         if device is None:
             return
         await device.set_led_state(True)
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"]["led_off"] = 0
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the LED off."""
@@ -145,7 +150,9 @@ class KasaCloudLEDSwitch(KasaCloudEntity, SwitchEntity):
         if device is None:
             return
         await device.set_led_state(False)
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"]["led_off"] = 1
+        self.async_write_ha_state()
 
 
 class KasaCloudMotionSwitch(KasaCloudEntity, SwitchEntity):
@@ -178,7 +185,11 @@ class KasaCloudMotionSwitch(KasaCloudEntity, SwitchEntity):
         await device._pass_through_request(
             "smartlife.iot.PIR", "set_enable", {"enable": 1}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            pir = self.coordinator.data[self._device_id].get("pir_config")
+            if pir:
+                pir["enable"] = 1
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable motion detection."""
@@ -188,7 +199,11 @@ class KasaCloudMotionSwitch(KasaCloudEntity, SwitchEntity):
         await device._pass_through_request(
             "smartlife.iot.PIR", "set_enable", {"enable": 0}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            pir = self.coordinator.data[self._device_id].get("pir_config")
+            if pir:
+                pir["enable"] = 0
+        self.async_write_ha_state()
 
 
 class KasaCloudAmbientLightSwitch(KasaCloudEntity, SwitchEntity):
@@ -208,7 +223,6 @@ class KasaCloudAmbientLightSwitch(KasaCloudEntity, SwitchEntity):
         las = self._device_data.get("las_config")
         if las is None:
             return None
-        # LAS config is nested: {"devs": [{"enable": 1, ...}]}
         devs = las.get("devs")
         if not devs or not isinstance(devs, list):
             return None
@@ -225,7 +239,11 @@ class KasaCloudAmbientLightSwitch(KasaCloudEntity, SwitchEntity):
         await device._pass_through_request(
             "smartlife.iot.LAS", "set_enable", {"enable": 1}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            las = self.coordinator.data[self._device_id].get("las_config")
+            if las and las.get("devs"):
+                las["devs"][0]["enable"] = 1
+        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable the ambient light sensor."""
@@ -235,4 +253,8 @@ class KasaCloudAmbientLightSwitch(KasaCloudEntity, SwitchEntity):
         await device._pass_through_request(
             "smartlife.iot.LAS", "set_enable", {"enable": 0}
         )
-        await self.coordinator.async_request_refresh()
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            las = self.coordinator.data[self._device_id].get("las_config")
+            if las and las.get("devs"):
+                las["devs"][0]["enable"] = 0
+        self.async_write_ha_state()
