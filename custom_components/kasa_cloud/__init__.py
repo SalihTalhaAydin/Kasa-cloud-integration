@@ -161,13 +161,6 @@ async def async_setup_entry(
     smart_devices = [d for d in devices if _is_supported_device(d)]
     _LOGGER.info("Kasa Cloud: %d controllable smart devices", len(smart_devices))
 
-    # Debug notification to verify deployment
-    hass.components.persistent_notification.async_create(
-        f"Total: {len(devices)}, Children: {child_count}, Smart: {len(smart_devices)}",
-        title="Kasa Cloud Deploy Check",
-        notification_id="kasa_cloud_deploy",
-    )
-
     # Two-pass wrapping: parents/standalone first, then children with parent ref
     parent_wrappers: dict[str, KasaDeviceWrapper] = {}
     wrappers: dict[str, KasaDeviceWrapper] = {}
