@@ -155,10 +155,18 @@ async def async_setup_entry(
             f"Cannot connect to TP-Link cloud: {err}"
         ) from err
 
-    _LOGGER.info("Kasa Cloud: found %d devices", len(devices))
+    child_count = sum(1 for d in devices if getattr(d, "child_id", None) is not None)
+    _LOGGER.info("Kasa Cloud: found %d devices (%d children)", len(devices), child_count)
 
     smart_devices = [d for d in devices if _is_supported_device(d)]
     _LOGGER.info("Kasa Cloud: %d controllable smart devices", len(smart_devices))
+
+    # Debug notification to verify deployment
+    hass.components.persistent_notification.async_create(
+        f"Total: {len(devices)}, Children: {child_count}, Smart: {len(smart_devices)}",
+        title="Kasa Cloud Deploy Check",
+        notification_id="kasa_cloud_deploy",
+    )
 
     # Two-pass wrapping: parents/standalone first, then children with parent ref
     parent_wrappers: dict[str, KasaDeviceWrapper] = {}
