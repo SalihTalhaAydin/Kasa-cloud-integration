@@ -33,7 +33,7 @@ async def async_setup_entry(
     for device in devices:
         alias = device.get_alias()
         device_id = device.device_id
-        model = device.device_info.device_model if hasattr(device, "device_info") else "Unknown"
+        model = device.device_model
 
         if is_dimmer_device(device):
             entities.append(

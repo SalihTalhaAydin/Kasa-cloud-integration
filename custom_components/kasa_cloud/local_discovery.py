@@ -39,7 +39,8 @@ class LocalDeviceDiscovery:
         for device_id, wrapper in wrappers.items():
             try:
                 mac = wrapper.cloud_mac
-                self._mac_to_device_id[mac] = device_id
+                if mac:
+                    self._mac_to_device_id[mac] = device_id
             except Exception:
                 _LOGGER.debug("No MAC for cloud device %s", device_id)
         # Store last known IPs for direct retry

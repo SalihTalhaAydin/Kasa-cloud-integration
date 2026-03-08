@@ -36,18 +36,34 @@ def normalize_mac(mac: str) -> str:
     return mac.upper().replace(":", "").replace("-", "")
 
 
+def get_device_model(device) -> str:
+    """Safely get model string. Children's device_info lacks device_model."""
+    info = device.device_info
+    return getattr(info, "device_model", "")
+
+
 def is_dimmer_device(device) -> bool:
     """Return True if device is a dimmer (ES20M, KP405)."""
-    model = device.device_info.device_model
+    model = get_device_model(device)
     return any(model.startswith(p) for p in DIMMER_MODELS)
 
 
 def is_light_switch(device) -> bool:
     """Return True for wall switches that control lights (HS200, etc.)."""
-    model = device.device_info.device_model
+    model = get_device_model(device)
     return any(model.startswith(p) for p in LIGHT_SWITCH_MODELS)
 
 
 def is_plug_device(device) -> bool:
     """Return True for smart plugs (KP200, etc.) — use switch platform."""
     return not is_dimmer_device(device) and not is_light_switch(device)
+
+
+def is_child_device(device) -> bool:
+    """Return True if device is a child outlet of a multi-outlet plug."""
+    return getattr(device, "child_id", None) is not None
+
+
+def is_parent_device(device) -> bool:
+    """Return True if device is a parent that has children (multi-outlet hub)."""
+    return device.has_children() and not is_child_device(device)

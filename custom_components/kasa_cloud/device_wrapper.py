@@ -23,9 +23,10 @@ LOCAL_RETRY_BACKOFF = 60
 class KasaDeviceWrapper:
     """Wraps cloud + local device, routes commands local-first."""
 
-    def __init__(self, cloud_device) -> None:
+    def __init__(self, cloud_device, parent_wrapper: KasaDeviceWrapper | None = None) -> None:
         """Initialize with the cloud device. Local set later via attach_local()."""
         self._cloud = cloud_device
+        self._parent: KasaDeviceWrapper | None = parent_wrapper
         self._local = None
         self._local_available: bool = False
         self._last_local_failure: float = 0.0
@@ -35,8 +36,34 @@ class KasaDeviceWrapper:
 
     @property
     def device_id(self) -> str:
-        """Return the cloud device ID."""
-        return self._cloud.device_id
+        """Return unique identifier. For children, appends child_id to avoid collisions."""
+        base_id = self._cloud.device_id
+        child_id = self.child_id
+        if child_id is not None:
+            return f"{base_id}_{child_id}"
+        return base_id
+
+    @property
+    def parent_device_id(self) -> str | None:
+        """Return the parent's device_id if this is a child, else None."""
+        if self.child_id is not None:
+            return self._cloud.device_id
+        return None
+
+    @property
+    def parent_wrapper(self) -> KasaDeviceWrapper | None:
+        """Return the parent wrapper if this is a child device."""
+        return self._parent
+
+    @property
+    def device_model(self) -> str:
+        """Return device model string, safely handling children."""
+        model = getattr(self._cloud.device_info, "device_model", None)
+        if model:
+            return model
+        if self._parent:
+            return self._parent.device_model
+        return "Unknown"
 
     @property
     def device_info(self):
@@ -65,9 +92,12 @@ class KasaDeviceWrapper:
         return await self._cloud.get_sys_info()
 
     @property
-    def cloud_mac(self) -> str:
-        """Return normalized MAC from cloud device_info."""
-        return normalize_mac(self._cloud.device_info.device_mac)
+    def cloud_mac(self) -> str | None:
+        """Return normalized MAC from cloud device_info, or None for children."""
+        mac = getattr(self._cloud.device_info, "device_mac", None)
+        if mac:
+            return normalize_mac(mac)
+        return None
 
     @property
     def connection_mode(self) -> str:

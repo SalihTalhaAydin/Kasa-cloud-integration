@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import CONN_MODE_LOCAL, is_dimmer_device
+from .const import CONN_MODE_LOCAL, is_child_device, is_dimmer_device
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,43 +37,55 @@ async def async_setup_entry(
     for device in devices:
         alias = device.get_alias()
         device_id = device.device_id
-        model = device.device_info.device_model if hasattr(device, "device_info") else "Unknown"
+        model = device.device_model
+        parent_device_id = device.parent_device_id
 
-        entities.append(
-            KasaCloudRSSISensor(
-                coordinator=coordinator,
-                device_id=device_id,
-                device_name=alias,
-                model=model,
-            )
-        )
-        entities.append(
-            KasaCloudOnTimeSensor(
-                coordinator=coordinator,
-                device_id=device_id,
-                device_name=alias,
-                model=model,
-            )
-        )
-
-        entities.append(
-            KasaCloudConnectionModeSensor(
-                coordinator=coordinator,
-                device_id=device_id,
-                device_name=alias,
-                model=model,
-            )
-        )
-
-        if is_dimmer_device(device):
+        if is_child_device(device):
+            # Children: on-time only (RSSI/connection_mode are parent-level)
             entities.append(
-                KasaCloudAmbientLightSensor(
+                KasaCloudOnTimeSensor(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                    parent_device_id=parent_device_id,
+                )
+            )
+        else:
+            # Parent/standalone: all sensors
+            entities.append(
+                KasaCloudRSSISensor(
                     coordinator=coordinator,
                     device_id=device_id,
                     device_name=alias,
                     model=model,
                 )
             )
+            entities.append(
+                KasaCloudOnTimeSensor(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            entities.append(
+                KasaCloudConnectionModeSensor(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            if is_dimmer_device(device):
+                entities.append(
+                    KasaCloudAmbientLightSensor(
+                        coordinator=coordinator,
+                        device_id=device_id,
+                        device_name=alias,
+                        model=model,
+                    )
+                )
 
     async_add_entities(entities)
     _LOGGER.info("Kasa Cloud: added %d sensor entities", len(entities))
@@ -107,9 +119,9 @@ class KasaCloudOnTimeSensor(KasaCloudEntity, SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, coordinator, device_id, device_name, model) -> None:
+    def __init__(self, coordinator, device_id, device_name, model, parent_device_id=None) -> None:
         """Initialize the on-time sensor."""
-        super().__init__(coordinator, device_id, device_name, model)
+        super().__init__(coordinator, device_id, device_name, model, parent_device_id=parent_device_id)
         self._attr_unique_id = f"kasa_cloud_{device_id}_on_time"
         self._attr_name = "On time"
 

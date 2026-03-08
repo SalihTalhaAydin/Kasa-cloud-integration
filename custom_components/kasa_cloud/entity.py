@@ -21,22 +21,27 @@ class KasaCloudEntity(CoordinatorEntity[KasaCloudCoordinator]):
         device_id: str,
         device_name: str,
         model: str,
+        parent_device_id: str | None = None,
     ) -> None:
         """Initialize the entity."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
         self._model = model
+        self._parent_device_id = parent_device_id
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return DeviceInfo(
+        info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
             name=self._device_name,
             manufacturer="TP-Link",
             model=self._model,
         )
+        if self._parent_device_id:
+            info["via_device"] = (DOMAIN, self._parent_device_id)
+        return info
 
     @property
     def _device(self):

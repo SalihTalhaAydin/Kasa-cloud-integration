@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import is_dimmer_device, is_plug_device
+from .const import is_child_device, is_dimmer_device, is_parent_device, is_plug_device
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,47 +29,67 @@ async def async_setup_entry(
     for device in devices:
         alias = device.get_alias()
         device_id = device.device_id
-        model = device.device_info.device_model if hasattr(device, "device_info") else "Unknown"
+        model = device.device_model
+        parent_device_id = device.parent_device_id
 
-        # Main on/off switch — only for smart plugs (KP200).
-        if is_plug_device(device):
+        if is_child_device(device):
+            # Child outlet: main switch only (no LED, no motion/ambient)
             entities.append(
                 KasaCloudSwitch(
                     coordinator=coordinator,
                     device_id=device_id,
                     device_name=alias,
                     model=model,
+                    parent_device_id=parent_device_id,
                 )
             )
-
-        # LED indicator switch — all devices
-        entities.append(
-            KasaCloudLEDSwitch(
-                coordinator=coordinator,
-                device_id=device_id,
-                device_name=alias,
-                model=model,
-            )
-        )
-
-        # Motion and ambient switches — dimmers only
-        if is_dimmer_device(device):
+        elif is_parent_device(device):
+            # Parent of multi-outlet: LED switch only (children handle on/off)
             entities.append(
-                KasaCloudMotionSwitch(
+                KasaCloudLEDSwitch(
                     coordinator=coordinator,
                     device_id=device_id,
                     device_name=alias,
                     model=model,
                 )
             )
+        else:
+            # Standalone plug: main switch + LED
+            if is_plug_device(device):
+                entities.append(
+                    KasaCloudSwitch(
+                        coordinator=coordinator,
+                        device_id=device_id,
+                        device_name=alias,
+                        model=model,
+                    )
+                )
             entities.append(
-                KasaCloudAmbientLightSwitch(
+                KasaCloudLEDSwitch(
                     coordinator=coordinator,
                     device_id=device_id,
                     device_name=alias,
                     model=model,
                 )
             )
+            # Motion and ambient switches — dimmers only
+            if is_dimmer_device(device):
+                entities.append(
+                    KasaCloudMotionSwitch(
+                        coordinator=coordinator,
+                        device_id=device_id,
+                        device_name=alias,
+                        model=model,
+                    )
+                )
+                entities.append(
+                    KasaCloudAmbientLightSwitch(
+                        coordinator=coordinator,
+                        device_id=device_id,
+                        device_name=alias,
+                        model=model,
+                    )
+                )
 
     async_add_entities(entities)
     _LOGGER.info("Kasa Cloud: added %d switch entities", len(entities))
@@ -80,38 +100,50 @@ class KasaCloudSwitch(KasaCloudEntity, SwitchEntity):
 
     _attr_device_class = SwitchDeviceClass.OUTLET
 
-    def __init__(self, coordinator, device_id, device_name, model) -> None:
+    def __init__(self, coordinator, device_id, device_name, model, parent_device_id=None) -> None:
         """Initialize the switch."""
-        super().__init__(coordinator, device_id, device_name, model)
+        super().__init__(coordinator, device_id, device_name, model, parent_device_id=parent_device_id)
         self._attr_unique_id = f"kasa_cloud_{device_id}"
         self._attr_name = None
 
     @property
     def is_on(self) -> bool | None:
         """Return True if the switch is on."""
+        # Children use 'state', standalone plugs use 'relay_state'
+        state = self._sys_info.get("state")
+        if state is not None:
+            return state == 1
         relay = self._sys_info.get("relay_state")
-        if relay is None:
-            return None
-        return relay == 1
+        if relay is not None:
+            return relay == 1
+        return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the switch on via cloud."""
+        """Turn the switch on."""
         device = self._device
         if device is None:
             return
         await device.power_on()
         if self.coordinator.data and self._device_id in self.coordinator.data:
-            self.coordinator.data[self._device_id]["sys_info"]["relay_state"] = 1
+            sys_info = self.coordinator.data[self._device_id]["sys_info"]
+            if "state" in sys_info:
+                sys_info["state"] = 1
+            else:
+                sys_info["relay_state"] = 1
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the switch off via cloud."""
+        """Turn the switch off."""
         device = self._device
         if device is None:
             return
         await device.power_off()
         if self.coordinator.data and self._device_id in self.coordinator.data:
-            self.coordinator.data[self._device_id]["sys_info"]["relay_state"] = 0
+            sys_info = self.coordinator.data[self._device_id]["sys_info"]
+            if "state" in sys_info:
+                sys_info["state"] = 0
+            else:
+                sys_info["relay_state"] = 0
         self.async_write_ha_state()
 
 

@@ -26,6 +26,15 @@ from .device_wrapper import KasaDeviceWrapper
 _LOGGER = logging.getLogger(__name__)
 
 
+def _is_supported_device(d) -> bool:
+    """Check if a device should be included in the integration."""
+    if getattr(d, "child_id", None) is not None:
+        return True
+    if hasattr(d, "device_info") and hasattr(d.device_info, "device_type"):
+        return d.device_info.device_type == "IOT.SMARTPLUGSWITCH"
+    return False
+
+
 async def async_get_devices(
     hass: HomeAssistant, device_manager: TPLinkDeviceManager
 ) -> list:
@@ -90,20 +99,27 @@ async def async_setup_entry(
 
     _LOGGER.info("Kasa Cloud: found %d devices", len(devices))
 
-    smart_devices = [
-        d for d in devices
-        if hasattr(d, "device_info")
-        and d.device_info.device_type == "IOT.SMARTPLUGSWITCH"
-    ]
+    smart_devices = [d for d in devices if _is_supported_device(d)]
     _LOGGER.info("Kasa Cloud: %d controllable smart devices", len(smart_devices))
 
-    # Wrap cloud devices in KasaDeviceWrapper for local+cloud routing
+    # Two-pass wrapping: parents/standalone first, then children with parent ref
+    parent_wrappers: dict[str, KasaDeviceWrapper] = {}
     wrappers: dict[str, KasaDeviceWrapper] = {}
     wrapped_devices: list[KasaDeviceWrapper] = []
+
     for device in smart_devices:
-        wrapper = KasaDeviceWrapper(device)
-        wrappers[device.device_id] = wrapper
-        wrapped_devices.append(wrapper)
+        if getattr(device, "child_id", None) is None:
+            wrapper = KasaDeviceWrapper(device)
+            parent_wrappers[device.device_id] = wrapper
+            wrappers[wrapper.device_id] = wrapper
+            wrapped_devices.append(wrapper)
+
+    for device in smart_devices:
+        if getattr(device, "child_id", None) is not None:
+            parent = parent_wrappers.get(device.device_id)
+            wrapper = KasaDeviceWrapper(device, parent_wrapper=parent)
+            wrappers[wrapper.device_id] = wrapper
+            wrapped_devices.append(wrapper)
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = KasaCloudCoordinator(hass, wrapped_devices, scan_interval)
@@ -122,7 +138,11 @@ async def async_setup_entry(
                 username=email,
                 password=password,
             )
-            local_discovery = LocalDeviceDiscovery(hass, wrappers, credentials)
+            local_wrappers = {
+                w.device_id: w for w in wrapped_devices
+                if w.child_id is None
+            }
+            local_discovery = LocalDeviceDiscovery(hass, local_wrappers, credentials)
             await local_discovery.async_start()
         except Exception:
             _LOGGER.warning("Failed to start local discovery, using cloud only")
@@ -177,8 +197,11 @@ async def _async_update_listener(
                 username=entry.data[CONF_EMAIL],
                 password=entry.data[CONF_PASSWORD],
             )
-            wrappers = {d.device_id: d for d in entry.runtime_data.devices}
-            discovery = LocalDeviceDiscovery(hass, wrappers, credentials)
+            local_wrappers = {
+                d.device_id: d for d in entry.runtime_data.devices
+                if d.child_id is None
+            }
+            discovery = LocalDeviceDiscovery(hass, local_wrappers, credentials)
             await discovery.async_start()
             entry.runtime_data.local_discovery = discovery
             _LOGGER.info("Kasa Cloud: local control enabled")
