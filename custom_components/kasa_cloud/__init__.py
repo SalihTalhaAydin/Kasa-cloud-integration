@@ -72,17 +72,29 @@ async def async_get_devices(
         and hasattr(d.device_info, "device_model")
         and d.device_info.device_model.startswith(("KP200", "KP400"))
     ]
+    _LOGGER.debug(
+        "Kasa Cloud: found %d unsupported multi-outlet devices", len(unsupported_parents)
+    )
     if unsupported_parents:
         from tplinkcloud.device import TPLinkDevice
+
         child_tasks = [d.get_sys_info() for d in unsupported_parents]
         sys_infos = await asyncio.gather(*child_tasks, return_exceptions=True)
         for parent, sys_info in zip(unsupported_parents, sys_infos):
-            if isinstance(sys_info, Exception) or sys_info is None:
+            if isinstance(sys_info, Exception):
+                _LOGGER.warning(
+                    "Kasa Cloud: sys_info failed for %s: %s",
+                    parent.get_alias(),
+                    sys_info,
+                )
+                continue
+            if sys_info is None:
+                _LOGGER.warning(
+                    "Kasa Cloud: sys_info is None for %s", parent.get_alias()
+                )
                 continue
             raw = sys_info if isinstance(sys_info, dict) else vars(sys_info)
             children_data = raw.get("children", [])
-            if not children_data:
-                continue
             _LOGGER.info(
                 "Kasa Cloud: %s has %d outlets, creating child devices",
                 parent.get_alias(),
@@ -101,6 +113,12 @@ async def async_get_devices(
                     child_id=child_info.get("id"),
                 )
                 devices.append(child)
+                _LOGGER.info(
+                    "Kasa Cloud: created child '%s' (id=%s) for %s",
+                    child_info.get("alias"),
+                    child_info.get("id"),
+                    parent.get_alias(),
+                )
 
     return devices
 
