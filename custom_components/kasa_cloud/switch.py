@@ -59,10 +59,11 @@ class KasaCloudSwitch(SwitchEntity):
     ) -> None:
         """Initialize the switch."""
         self._device = device
-        self._attr_name = name
+        self._attr_name = None  # Use device name only (has_entity_name=True)
         self._attr_unique_id = f"kasa_cloud_{device_id}"
         self._attr_is_on = None
         self._device_id = device_id
+        self._device_name = name
         self._model = model
 
     @property
@@ -70,7 +71,7 @@ class KasaCloudSwitch(SwitchEntity):
         """Return device information."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
-            name=self._attr_name,
+            name=self._device_name,
             manufacturer="TP-Link",
             model=self._model,
         )
