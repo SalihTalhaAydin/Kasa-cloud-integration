@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report a bug with the Kasa Cloud integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the details below.
+
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant Version
+      placeholder: "e.g., 2025.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration Version
+      placeholder: "e.g., 1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: device-model
+    attributes:
+      label: Device Model
+      placeholder: "e.g., ES20M, KP405, HS200, KP200"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      placeholder: A clear description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Paste any relevant logs from Home Assistant (Settings → System → Logs).
+      render: shell
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      placeholder: Any other context, screenshots, or configuration details.

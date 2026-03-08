@@ -1,0 +1,36 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea? We'd love to hear it!
+
+  - type: input
+    id: device-model
+    attributes:
+      label: Device Model (if applicable)
+      placeholder: "e.g., ES20M, KP405, HS200"
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Feature
+      placeholder: A clear description of what you'd like to see.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      placeholder: Why would this feature be useful? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      placeholder: Any other context, mockups, or references.
