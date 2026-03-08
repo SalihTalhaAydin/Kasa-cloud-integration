@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to TP-Link Kasa Cloud",
+        "description": "Enter your TP-Link / Kasa account credentials. Make sure 2FA is disabled on your account.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password, or unable to connect to TP-Link cloud."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  }
+}
