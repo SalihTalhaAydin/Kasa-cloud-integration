@@ -16,5 +16,15 @@
     "abort": {
       "already_configured": "This account is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kasa Cloud Options",
+        "data": {
+          "scan_interval": "Polling interval (seconds, 0 to disable)"
+        }
+      }
+    }
   }
 }
