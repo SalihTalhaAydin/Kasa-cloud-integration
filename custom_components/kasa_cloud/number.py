@@ -17,7 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 
 DIMMER_TIME_SETTINGS = [
     {
-        "key": "fadeOnTime",
+        "key": "fade_on_time",
+        "api_key": "fadeOnTime",
         "name": "Fade on time",
         "set_method": "set_fade_on_time",
         "param_key": "fadeTime",
@@ -26,7 +27,8 @@ DIMMER_TIME_SETTINGS = [
         "step": 100,
     },
     {
-        "key": "fadeOffTime",
+        "key": "fade_off_time",
+        "api_key": "fadeOffTime",
         "name": "Fade off time",
         "set_method": "set_fade_off_time",
         "param_key": "fadeTime",
@@ -35,7 +37,8 @@ DIMMER_TIME_SETTINGS = [
         "step": 100,
     },
     {
-        "key": "gentleOnTime",
+        "key": "gentle_on_time",
+        "api_key": "gentleOnTime",
         "name": "Gentle on time",
         "set_method": "set_gentle_on_time",
         "param_key": "duration",
@@ -44,7 +47,8 @@ DIMMER_TIME_SETTINGS = [
         "step": 1000,
     },
     {
-        "key": "gentleOffTime",
+        "key": "gentle_off_time",
+        "api_key": "gentleOffTime",
         "name": "Gentle off time",
         "set_method": "set_gentle_off_time",
         "param_key": "duration",
@@ -110,7 +114,7 @@ class KasaCloudDimmerTimeNumber(KasaCloudEntity, NumberEntity):
         params = self._device_data.get("dimmer_params")
         if params is None:
             return None
-        return params.get(self._setting["key"])
+        return params.get(self._setting["api_key"])
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the timing value."""
