@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="https://brands.home-assistant.io/_/kasa/icon.png" alt="Kasa Cloud" width="120" height="120">
+  <img src="logo.png" alt="Kasa Cloud" width="400">
 </p>
-
-<h1 align="center">Kasa Cloud</h1>
 
 <p align="center">
   <strong>A Home Assistant custom integration for TP-Link Kasa devices via cloud API</strong>
