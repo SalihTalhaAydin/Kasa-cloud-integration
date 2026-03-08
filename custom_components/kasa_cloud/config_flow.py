@@ -42,8 +42,13 @@ class KasaCloudConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input[CONF_EMAIL],
                     user_input[CONF_PASSWORD],
                 )
-                # get_devices() is async
-                await dm.get_devices()
+                # Validate credentials by fetching device list.
+                # get_device_info_list() uses blocking requests,
+                # so run in executor instead of calling dm.get_devices().
+                await self.hass.async_add_executor_job(
+                    dm._tplink_api.get_device_info_list,
+                    dm._auth_token,
+                )
             except Exception:
                 _LOGGER.exception("Failed to authenticate with TP-Link cloud")
                 errors["base"] = "invalid_auth"
