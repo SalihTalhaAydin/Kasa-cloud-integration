@@ -62,6 +62,46 @@ async def async_get_devices(
     for device_children in devices_children:
         devices.extend(device_children)
 
+    # Handle multi-outlet devices not explicitly supported by the library
+    # (e.g., KP200). Check sys_info for 'children' array and create child objects.
+    unsupported_parents = [
+        d for d in devices
+        if not d.has_children()
+        and getattr(d, "child_id", None) is None
+        and hasattr(d, "device_info")
+        and hasattr(d.device_info, "device_model")
+        and d.device_info.device_model.startswith(("KP200", "KP400"))
+    ]
+    if unsupported_parents:
+        from tplinkcloud.device import TPLinkDevice
+        child_tasks = [d.get_sys_info() for d in unsupported_parents]
+        sys_infos = await asyncio.gather(*child_tasks, return_exceptions=True)
+        for parent, sys_info in zip(unsupported_parents, sys_infos):
+            if isinstance(sys_info, Exception) or sys_info is None:
+                continue
+            raw = sys_info if isinstance(sys_info, dict) else vars(sys_info)
+            children_data = raw.get("children", [])
+            if not children_data:
+                continue
+            _LOGGER.info(
+                "Kasa Cloud: %s has %d outlets, creating child devices",
+                parent.get_alias(),
+                len(children_data),
+            )
+            for child_info in children_data:
+                child = TPLinkDevice(
+                    parent._client,
+                    parent.device_id,
+                    type("ChildInfo", (), {
+                        "alias": child_info.get("alias", parent.get_alias()),
+                        "id": child_info.get("id"),
+                        "state": child_info.get("state"),
+                        "on_time": child_info.get("on_time"),
+                    })(),
+                    child_id=child_info.get("id"),
+                )
+                devices.append(child)
+
     return devices
 
 
