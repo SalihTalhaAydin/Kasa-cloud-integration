@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DIMMER_TIME_SETTINGS = [
     {
-        "key": "fade_on_time",
+        "key": "fadeOnTime",
         "name": "Fade on time",
         "set_method": "set_fade_on_time",
         "param_key": "fadeTime",
@@ -26,7 +26,7 @@ DIMMER_TIME_SETTINGS = [
         "step": 100,
     },
     {
-        "key": "fade_off_time",
+        "key": "fadeOffTime",
         "name": "Fade off time",
         "set_method": "set_fade_off_time",
         "param_key": "fadeTime",
@@ -35,7 +35,7 @@ DIMMER_TIME_SETTINGS = [
         "step": 100,
     },
     {
-        "key": "gentle_on_time",
+        "key": "gentleOnTime",
         "name": "Gentle on time",
         "set_method": "set_gentle_on_time",
         "param_key": "duration",
@@ -44,7 +44,7 @@ DIMMER_TIME_SETTINGS = [
         "step": 1000,
     },
     {
-        "key": "gentle_off_time",
+        "key": "gentleOffTime",
         "name": "Gentle off time",
         "set_method": "set_gentle_off_time",
         "param_key": "duration",

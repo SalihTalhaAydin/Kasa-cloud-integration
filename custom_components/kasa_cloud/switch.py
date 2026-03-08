@@ -208,7 +208,11 @@ class KasaCloudAmbientLightSwitch(KasaCloudEntity, SwitchEntity):
         las = self._device_data.get("las_config")
         if las is None:
             return None
-        enable = las.get("enable")
+        # LAS config is nested: {"devs": [{"enable": 1, ...}]}
+        devs = las.get("devs")
+        if not devs or not isinstance(devs, list):
+            return None
+        enable = devs[0].get("enable")
         if enable is None:
             return None
         return enable == 1
