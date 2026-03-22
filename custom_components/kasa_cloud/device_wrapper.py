@@ -17,7 +17,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 # Minimum seconds between local retry after a failure
-LOCAL_RETRY_BACKOFF = 60
+LOCAL_RETRY_BACKOFF = 10
 
 
 class KasaDeviceWrapper:
