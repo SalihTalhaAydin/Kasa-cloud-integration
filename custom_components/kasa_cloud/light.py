@@ -107,6 +107,13 @@ class KasaCloudDimmerLight(KasaCloudEntity, LightEntity):
         if ATTR_TRANSITION in kwargs:
             transition_ms = int(kwargs[ATTR_TRANSITION] * 1000)
 
+        # When no brightness specified, preserve the current brightness
+        # to prevent repeated turn_on calls from slowly dimming to 1%
+        if brightness_pct is None:
+            current_brt = self._sys_info.get("brightness")
+            if current_brt is not None and current_brt > 0:
+                brightness_pct = current_brt
+
         if brightness_pct is not None and transition_ms is not None:
             await device._pass_through_request(
                 "smartlife.iot.dimmer",
