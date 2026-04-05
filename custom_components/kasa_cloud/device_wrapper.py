@@ -155,10 +155,26 @@ class KasaDeviceWrapper:
         self._local_available = True
         self._connection_mode = CONN_MODE_LOCAL
 
+    # --- Pre-command cloud poll ---
+
+    async def _pre_poll(self) -> None:
+        """Poll this device via cloud before sending a command.
+
+        Ensures we have fresh state and confirms the device is reachable.
+        Failures are logged but do not block the command.
+        """
+        try:
+            await self._cloud.get_sys_info()
+        except Exception as err:
+            _LOGGER.debug(
+                "Pre-command poll failed for %s: %s", self.get_alias(), err
+            )
+
     # --- Command routing: power on/off ---
 
     async def power_on(self) -> None:
         """Turn device on, local-first."""
+        await self._pre_poll()
         if self._should_try_local():
             try:
                 await asyncio.wait_for(
@@ -172,6 +188,7 @@ class KasaDeviceWrapper:
 
     async def power_off(self) -> None:
         """Turn device off, local-first."""
+        await self._pre_poll()
         if self._should_try_local():
             try:
                 await asyncio.wait_for(
@@ -187,6 +204,7 @@ class KasaDeviceWrapper:
 
     async def set_led_state(self, on: bool) -> None:
         """Set LED indicator state, local-first."""
+        await self._pre_poll()
         if self._should_try_local():
             try:
                 await asyncio.wait_for(
@@ -211,6 +229,7 @@ class KasaDeviceWrapper:
         if params is None:
             params = {}
 
+        await self._pre_poll()
         if self._should_try_local():
             try:
                 result = await asyncio.wait_for(

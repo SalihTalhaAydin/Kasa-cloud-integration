@@ -184,7 +184,14 @@ async def async_setup_entry(
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = KasaCloudCoordinator(hass, wrapped_devices, scan_interval)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except ConfigEntryNotReady:
+        raise
+    except Exception as err:
+        raise ConfigEntryNotReady(
+            f"First poll failed (will retry): {err}"
+        ) from err
 
     # Start local discovery if enabled
     local_discovery = None
