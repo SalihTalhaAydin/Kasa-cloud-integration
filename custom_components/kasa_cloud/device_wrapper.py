@@ -32,6 +32,7 @@ class KasaDeviceWrapper:
         self._last_local_failure: float = 0.0
         self._connection_mode: str = CONN_MODE_CLOUD
         self._is_parent: bool = False
+        self._last_sys_info_alias: str | None = None
 
     # --- Proxy cloud device attributes ---
 
@@ -77,8 +78,19 @@ class KasaDeviceWrapper:
         return getattr(self._cloud, "child_id", None)
 
     def get_alias(self) -> str:
-        """Return the device alias."""
-        return self._cloud.get_alias()
+        """Return the device alias, preferring the fresh name from sys_info."""
+        return self._fresh_alias or self._cloud.get_alias()
+
+    @property
+    def _fresh_alias(self) -> str | None:
+        """Return alias from the most recent sys_info poll, if available."""
+        return self._last_sys_info_alias
+
+    def update_alias_from_sys_info(self, sys_info: dict) -> None:
+        """Update cached alias from a sys_info poll result."""
+        alias = sys_info.get("alias")
+        if alias:
+            self._last_sys_info_alias = alias
 
     def has_children(self) -> bool:
         """Return True if device has child devices."""

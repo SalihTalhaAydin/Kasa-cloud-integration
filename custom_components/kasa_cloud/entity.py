@@ -32,10 +32,12 @@ class KasaCloudEntity(CoordinatorEntity[KasaCloudCoordinator]):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device information."""
+        """Return device information, using fresh alias from sys_info when available."""
+        device = self._device
+        name = device.get_alias() if device else self._device_name
         info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
-            name=self._device_name,
+            name=name,
             manufacturer="TP-Link",
             model=self._model,
         )

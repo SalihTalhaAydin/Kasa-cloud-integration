@@ -65,6 +65,9 @@ class KasaCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             raise UpdateFailed(f"get_sys_info returned None for {device.get_alias()}")
         data["sys_info"] = sys_info if isinstance(sys_info, dict) else vars(sys_info)
 
+        # Update device alias from fresh sys_info
+        device.update_alias_from_sys_info(data["sys_info"])
+
         if is_dimmer_device(device):
             try:
                 data["pir_config"] = await device._pass_through_request(

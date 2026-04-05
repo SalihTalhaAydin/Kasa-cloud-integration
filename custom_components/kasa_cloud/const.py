@@ -16,7 +16,7 @@ PLATFORMS: list[Platform] = [
 DIMMER_MODELS = ("ES20M", "KP405")
 LIGHT_SWITCH_MODELS = ("HS200", "HS210", "HS220")
 
-DEFAULT_SCAN_INTERVAL = 60
+DEFAULT_SCAN_INTERVAL = 30
 CONF_SCAN_INTERVAL = "scan_interval"
 
 # Local control constants
