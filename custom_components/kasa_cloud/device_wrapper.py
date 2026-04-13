@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from base64 import b64decode
 import logging
 import time
 from typing import Any
@@ -100,7 +101,23 @@ class KasaDeviceWrapper:
 
     def get_alias(self) -> str:
         """Return the device alias, preferring the fresh name from sys_info."""
-        return self._fresh_alias or self._cloud.get_alias()
+        return self._fresh_alias or self._decode_alias(
+            self._cloud.get_alias(),
+        )
+
+    @staticmethod
+    def _decode_alias(alias: str) -> str:
+        """Decode base64-encoded aliases (Tapo cloud API)."""
+        if not alias:
+            return alias
+        try:
+            decoded = b64decode(alias).decode("utf-8")
+            # Only use decoded if it looks like readable text
+            if decoded.isprintable():
+                return decoded
+        except Exception:
+            pass
+        return alias
 
     @property
     def _fresh_alias(self) -> str | None:
