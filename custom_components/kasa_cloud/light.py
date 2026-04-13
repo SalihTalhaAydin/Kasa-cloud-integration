@@ -31,6 +31,8 @@ async def async_setup_entry(
 
     entities: list[LightEntity] = []
     for device in devices:
+        if device.is_tapo:
+            continue
         alias = device.get_alias()
         device_id = device.device_id
         model = device.device_model

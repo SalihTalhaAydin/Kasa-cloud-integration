@@ -11,6 +11,8 @@ from .const import (
     CONN_MODE_LOCAL,
     CONN_MODE_UNAVAILABLE,
     LOCAL_COMMAND_TIMEOUT,
+    PROTOCOL_IOT,
+    PROTOCOL_SMART,
     normalize_mac,
 )
 
@@ -23,14 +25,23 @@ LOCAL_RETRY_BACKOFF = 10
 class KasaDeviceWrapper:
     """Wraps cloud + local device, routes commands local-first."""
 
-    def __init__(self, cloud_device, parent_wrapper: KasaDeviceWrapper | None = None) -> None:
+    def __init__(
+        self,
+        cloud_device,
+        parent_wrapper: KasaDeviceWrapper | None = None,
+        protocol_family: str = PROTOCOL_IOT,
+    ) -> None:
         """Initialize with the cloud device. Local set later via attach_local()."""
         self._cloud = cloud_device
         self._parent: KasaDeviceWrapper | None = parent_wrapper
+        self._protocol_family = protocol_family
         self._local = None
         self._local_available: bool = False
         self._last_local_failure: float = 0.0
-        self._connection_mode: str = CONN_MODE_CLOUD
+        if protocol_family == PROTOCOL_SMART:
+            self._connection_mode: str = CONN_MODE_UNAVAILABLE
+        else:
+            self._connection_mode: str = CONN_MODE_CLOUD
         self._is_parent: bool = False
         self._last_sys_info_alias: str | None = None
 
@@ -77,6 +88,16 @@ class KasaDeviceWrapper:
         """Return the child ID if this is a child device."""
         return getattr(self._cloud, "child_id", None)
 
+    @property
+    def protocol_family(self) -> str:
+        """Return the protocol family (IOT or SMART)."""
+        return self._protocol_family
+
+    @property
+    def is_tapo(self) -> bool:
+        """Return True if this is a Tapo (SMART) device."""
+        return self._protocol_family == PROTOCOL_SMART
+
     def get_alias(self) -> str:
         """Return the device alias, preferring the fresh name from sys_info."""
         return self._fresh_alias or self._cloud.get_alias()
@@ -101,8 +122,37 @@ class KasaDeviceWrapper:
         return await self._cloud.get_children_async()
 
     async def get_sys_info(self):
-        """Always poll via cloud (stable, no device crashes)."""
+        """Poll via cloud for IOT devices, local for Tapo."""
+        if self.is_tapo:
+            return await self._get_tapo_state()
         return await self._cloud.get_sys_info()
+
+    async def _get_tapo_state(self) -> dict:
+        """Get device state from local python-kasa for Tapo devices."""
+        if self._local is None:
+            raise Exception(
+                f"Tapo device {self.get_alias()} has no local connection"
+            )
+        await self._local.update()
+        state: dict[str, Any] = {
+            "relay_state": 1 if self._local.is_on else 0,
+            "alias": self._local.alias or self.get_alias(),
+            "rssi": getattr(self._local, "rssi", None),
+            "on_time": getattr(self._local, "on_since", None),
+        }
+        # Energy data for P110/P115
+        if hasattr(self._local, "has_emeter") and self._local.has_emeter:
+            try:
+                emeter = self._local.emeter_realtime
+                state["emeter"] = {
+                    "power_w": getattr(emeter, "power", None),
+                    "voltage_v": getattr(emeter, "voltage", None),
+                    "current_a": getattr(emeter, "current", None),
+                    "total_kwh": getattr(emeter, "total", None),
+                }
+            except Exception:
+                _LOGGER.debug("Emeter read failed for %s", self.get_alias())
+        return state
 
     @property
     def cloud_mac(self) -> str | None:
@@ -139,7 +189,10 @@ class KasaDeviceWrapper:
         """Remove local device (e.g., went offline)."""
         self._local = None
         self._local_available = False
-        self._connection_mode = CONN_MODE_CLOUD
+        if self.is_tapo:
+            self._connection_mode = CONN_MODE_UNAVAILABLE
+        else:
+            self._connection_mode = CONN_MODE_CLOUD
 
     def _should_try_local(self) -> bool:
         """Check if local path should be attempted."""
@@ -156,10 +209,15 @@ class KasaDeviceWrapper:
         """Record a local command failure."""
         self._local_available = False
         self._last_local_failure = time.monotonic()
-        self._connection_mode = CONN_MODE_CLOUD
+        if self.is_tapo:
+            self._connection_mode = CONN_MODE_UNAVAILABLE
+        else:
+            self._connection_mode = CONN_MODE_CLOUD
         _LOGGER.debug(
-            "Local command failed for %s, falling back to cloud",
+            "Local command failed for %s, %s",
             self.get_alias(),
+            "no fallback (Tapo)" if self.is_tapo
+            else "falling back to cloud",
         )
 
     def _mark_local_success(self) -> None:
@@ -186,29 +244,39 @@ class KasaDeviceWrapper:
 
     async def power_on(self) -> None:
         """Turn device on, local-first."""
-        await self._pre_poll()
-        if self._should_try_local():
+        if not self.is_tapo:
+            await self._pre_poll()
+        if self.is_tapo or self._should_try_local():
             try:
                 await asyncio.wait_for(
-                    self._local.turn_on(), timeout=LOCAL_COMMAND_TIMEOUT
+                    self._local.turn_on(),
+                    timeout=LOCAL_COMMAND_TIMEOUT,
                 )
                 self._mark_local_success()
                 return
             except Exception:
+                if self.is_tapo:
+                    self._mark_local_failure()
+                    raise
                 self._mark_local_failure()
         await self._cloud.power_on()
 
     async def power_off(self) -> None:
         """Turn device off, local-first."""
-        await self._pre_poll()
-        if self._should_try_local():
+        if not self.is_tapo:
+            await self._pre_poll()
+        if self.is_tapo or self._should_try_local():
             try:
                 await asyncio.wait_for(
-                    self._local.turn_off(), timeout=LOCAL_COMMAND_TIMEOUT
+                    self._local.turn_off(),
+                    timeout=LOCAL_COMMAND_TIMEOUT,
                 )
                 self._mark_local_success()
                 return
             except Exception:
+                if self.is_tapo:
+                    self._mark_local_failure()
+                    raise
                 self._mark_local_failure()
         await self._cloud.power_off()
 
@@ -216,11 +284,14 @@ class KasaDeviceWrapper:
 
     async def set_led_state(self, on: bool) -> None:
         """Set LED indicator state, local-first."""
+        if self.is_tapo:
+            return  # Tapo LED control not supported
         await self._pre_poll()
         if self._should_try_local():
             try:
                 await asyncio.wait_for(
-                    self._local.set_led(on), timeout=LOCAL_COMMAND_TIMEOUT
+                    self._local.set_led(on),
+                    timeout=LOCAL_COMMAND_TIMEOUT,
                 )
                 self._mark_local_success()
                 return
@@ -231,13 +302,19 @@ class KasaDeviceWrapper:
     # --- Command routing: passthrough requests ---
 
     async def _pass_through_request(
-        self, module: str, method: str, params: dict[str, Any] | None
+        self, module: str, method: str,
+        params: dict[str, Any] | None,
     ) -> Any:
-        """Route passthrough commands: try local first, cloud fallback.
+        """Route passthrough commands (IOT only).
 
-        For local, uses IotDevice._query_helper() which sends the same
-        JSON format over the local protocol (XOR/KLAP).
+        For local, uses IotDevice._query_helper() which sends the
+        same JSON format over the local protocol (XOR/KLAP).
+        Tapo devices do not support cloud passthrough.
         """
+        if self.is_tapo:
+            raise NotImplementedError(
+                "Cloud passthrough not supported for Tapo"
+            )
         if params is None:
             params = {}
 
@@ -245,7 +322,10 @@ class KasaDeviceWrapper:
         if self._should_try_local():
             try:
                 result = await asyncio.wait_for(
-                    self._local._query_helper(module, method, params if params else None),
+                    self._local._query_helper(
+                        module, method,
+                        params if params else None,
+                    ),
                     timeout=LOCAL_COMMAND_TIMEOUT,
                 )
                 self._mark_local_success()
@@ -253,4 +333,6 @@ class KasaDeviceWrapper:
             except Exception:
                 self._mark_local_failure()
 
-        return await self._cloud._pass_through_request(module, method, params)
+        return await self._cloud._pass_through_request(
+            module, method, params,
+        )

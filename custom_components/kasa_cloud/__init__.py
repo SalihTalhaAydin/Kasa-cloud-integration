@@ -19,6 +19,9 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLATFORMS,
+    PROTOCOL_SMART,
+    get_protocol_family,
+    is_tapo_device_type,
 )
 from .coordinator import KasaCloudCoordinator
 from .device_wrapper import KasaDeviceWrapper
@@ -27,11 +30,17 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _is_supported_device(d) -> bool:
-    """Check if a device should be included in the integration."""
+    """Check if a device should be included."""
     if getattr(d, "child_id", None) is not None:
         return True
-    if hasattr(d, "device_info") and hasattr(d.device_info, "device_type"):
-        return d.device_info.device_type == "IOT.SMARTPLUGSWITCH"
+    if not hasattr(d, "device_info"):
+        return False
+    info = d.device_info
+    dtype = getattr(info, "device_type", "")
+    if dtype == "IOT.SMARTPLUGSWITCH":
+        return True
+    if is_tapo_device_type(dtype):
+        return True
     return False
 
 
@@ -168,7 +177,13 @@ async def async_setup_entry(
 
     for device in smart_devices:
         if getattr(device, "child_id", None) is None:
-            wrapper = KasaDeviceWrapper(device)
+            dtype = getattr(
+                device.device_info, "device_type", ""
+            )
+            family = get_protocol_family(dtype)
+            wrapper = KasaDeviceWrapper(
+                device, protocol_family=family,
+            )
             parent_wrappers[device.device_id] = wrapper
             wrappers[wrapper.device_id] = wrapper
             wrapped_devices.append(wrapper)
@@ -176,7 +191,15 @@ async def async_setup_entry(
     for device in smart_devices:
         if getattr(device, "child_id", None) is not None:
             parent = parent_wrappers.get(device.device_id)
-            wrapper = KasaDeviceWrapper(device, parent_wrapper=parent)
+            family = (
+                parent.protocol_family if parent
+                else get_protocol_family("")
+            )
+            wrapper = KasaDeviceWrapper(
+                device,
+                parent_wrapper=parent,
+                protocol_family=family,
+            )
             wrappers[wrapper.device_id] = wrapper
             wrapped_devices.append(wrapper)
             if parent is not None:
@@ -193,10 +216,17 @@ async def async_setup_entry(
             f"First poll failed (will retry): {err}"
         ) from err
 
-    # Start local discovery if enabled
+    # Start local discovery if enabled or if Tapo devices exist
+    # (Tapo devices require local control — no cloud passthrough)
     local_discovery = None
-    local_control_enabled = entry.options.get(CONF_LOCAL_CONTROL, DEFAULT_LOCAL_CONTROL)
-    if local_control_enabled:
+    local_control_enabled = entry.options.get(
+        CONF_LOCAL_CONTROL, DEFAULT_LOCAL_CONTROL,
+    )
+    has_tapo = any(
+        w.protocol_family == PROTOCOL_SMART
+        for w in wrapped_devices
+    )
+    if local_control_enabled or has_tapo:
         try:
             from kasa import Credentials
 
@@ -206,14 +236,29 @@ async def async_setup_entry(
                 username=email,
                 password=password,
             )
+            # Include IOT devices only if local_control on;
+            # always include Tapo (SMART) devices.
             local_wrappers = {
-                w.device_id: w for w in wrapped_devices
-                if w.child_id is None
+                w.device_id: w
+                for w in wrapped_devices
+                if w.child_id is None and (
+                    local_control_enabled
+                    or w.is_tapo
+                )
             }
-            local_discovery = LocalDeviceDiscovery(hass, local_wrappers, credentials)
+            local_discovery = LocalDeviceDiscovery(
+                hass, local_wrappers, credentials,
+            )
             await local_discovery.async_start()
         except Exception:
-            _LOGGER.warning("Failed to start local discovery, using cloud only")
+            _LOGGER.warning(
+                "Failed to start local discovery"
+            )
+            if has_tapo:
+                _LOGGER.warning(
+                    "Tapo devices will be unavailable "
+                    "without local discovery"
+                )
 
     # Warn if official TP-Link integration is also loaded
     if "tplink" in hass.config.components:
@@ -252,10 +297,16 @@ async def _async_update_listener(
     _LOGGER.info("Kasa Cloud: polling interval changed to %ds", scan_interval)
 
     # Handle local control toggle
-    local_enabled = entry.options.get(CONF_LOCAL_CONTROL, DEFAULT_LOCAL_CONTROL)
+    local_enabled = entry.options.get(
+        CONF_LOCAL_CONTROL, DEFAULT_LOCAL_CONTROL,
+    )
     discovery = entry.runtime_data.local_discovery
+    has_tapo = any(
+        d.is_tapo for d in entry.runtime_data.devices
+    )
+    need_discovery = local_enabled or has_tapo
 
-    if local_enabled and discovery is None:
+    if need_discovery and discovery is None:
         try:
             from kasa import Credentials
 
@@ -266,21 +317,32 @@ async def _async_update_listener(
                 password=entry.data[CONF_PASSWORD],
             )
             local_wrappers = {
-                d.device_id: d for d in entry.runtime_data.devices
-                if d.child_id is None
+                d.device_id: d
+                for d in entry.runtime_data.devices
+                if d.child_id is None and (
+                    local_enabled or d.is_tapo
+                )
             }
-            discovery = LocalDeviceDiscovery(hass, local_wrappers, credentials)
+            discovery = LocalDeviceDiscovery(
+                hass, local_wrappers, credentials,
+            )
             await discovery.async_start()
             entry.runtime_data.local_discovery = discovery
             _LOGGER.info("Kasa Cloud: local control enabled")
         except Exception:
-            _LOGGER.warning("Failed to start local discovery")
-    elif not local_enabled and discovery is not None:
+            _LOGGER.warning(
+                "Failed to start local discovery"
+            )
+    elif not need_discovery and discovery is not None:
         discovery.async_stop()
         for wrapper in entry.runtime_data.devices:
             wrapper.detach_local()
         entry.runtime_data.local_discovery = None
         _LOGGER.info("Kasa Cloud: local control disabled")
+    elif local_enabled and discovery is not None:
+        # Rebuild wrapper set if toggled on while
+        # Tapo-only discovery was already running
+        pass
 
 
 async def async_unload_entry(

@@ -16,6 +16,15 @@ PLATFORMS: list[Platform] = [
 DIMMER_MODELS = ("ES20M", "KP405")
 LIGHT_SWITCH_MODELS = ("HS200", "HS210", "HS220")
 
+# Protocol families
+PROTOCOL_IOT = "IOT"      # Kasa devices (cloud passthrough works)
+PROTOCOL_SMART = "SMART"   # Tapo devices (local-only, no cloud passthrough)
+
+# Tapo model prefixes
+TAPO_PLUG_MODELS = ("P100", "P105", "P110", "P115", "P125", "P300")
+TAPO_BULB_MODELS = ("L510", "L530", "L610", "L630", "L900", "L920", "L930")
+TAPO_SWITCH_MODELS = ("S500", "S505")
+
 DEFAULT_SCAN_INTERVAL = 30
 CONF_SCAN_INTERVAL = "scan_interval"
 
@@ -67,3 +76,27 @@ def is_child_device(device) -> bool:
 def is_parent_device(device) -> bool:
     """Return True if device is a parent that has children (multi-outlet hub)."""
     return device.has_children() and not is_child_device(device)
+
+
+def is_tapo_device_type(device_type: str) -> bool:
+    """Return True if the cloud device_type indicates a Tapo device."""
+    return device_type.startswith("SMART.TAPO")
+
+
+def get_protocol_family(device_type: str) -> str:
+    """Return PROTOCOL_SMART for Tapo devices, PROTOCOL_IOT for Kasa."""
+    if is_tapo_device_type(device_type):
+        return PROTOCOL_SMART
+    return PROTOCOL_IOT
+
+
+def is_tapo_plug(device) -> bool:
+    """Return True for Tapo smart plugs (P1xx, P300, etc.)."""
+    model = get_device_model(device)
+    return any(model.startswith(p) for p in TAPO_PLUG_MODELS)
+
+
+def is_tapo_energy_plug(device) -> bool:
+    """Return True for Tapo plugs with energy monitoring (P110, P115)."""
+    model = get_device_model(device)
+    return model.startswith(("P110", "P115"))

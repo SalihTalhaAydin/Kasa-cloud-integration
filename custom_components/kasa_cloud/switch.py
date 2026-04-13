@@ -10,7 +10,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import is_child_device, is_dimmer_device, is_parent_device, is_plug_device
+from .const import (
+    is_child_device,
+    is_dimmer_device,
+    is_parent_device,
+    is_plug_device,
+    is_tapo_plug,
+)
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,8 +38,19 @@ async def async_setup_entry(
         model = device.device_model
         parent_device_id = device.parent_device_id
 
-        if is_child_device(device):
-            # Child outlet: main switch only (no LED, no motion/ambient)
+        if is_tapo_plug(device):
+            # Tapo plug: switch only (no LED/PIR/LAS)
+            entities.append(
+                KasaCloudSwitch(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            continue
+        elif is_child_device(device):
+            # Child outlet: main switch only
             entities.append(
                 KasaCloudSwitch(
                     coordinator=coordinator,

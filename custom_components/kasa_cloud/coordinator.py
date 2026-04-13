@@ -62,43 +62,75 @@ class KasaCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
 
         sys_info = await device.get_sys_info()
         if sys_info is None:
-            raise UpdateFailed(f"get_sys_info returned None for {device.get_alias()}")
-        data["sys_info"] = sys_info if isinstance(sys_info, dict) else vars(sys_info)
+            raise UpdateFailed(
+                f"get_sys_info returned None for "
+                f"{device.get_alias()}"
+            )
+        data["sys_info"] = (
+            sys_info if isinstance(sys_info, dict)
+            else vars(sys_info)
+        )
 
         # Update device alias from fresh sys_info
         device.update_alias_from_sys_info(data["sys_info"])
 
-        if is_dimmer_device(device):
+        # Tapo devices: state already complete from local
+        # IOT dimmer-specific polling via cloud passthrough
+        if not device.is_tapo and is_dimmer_device(device):
             try:
-                data["pir_config"] = await device._pass_through_request(
-                    "smartlife.iot.PIR", "get_config", {}
+                data["pir_config"] = (
+                    await device._pass_through_request(
+                        "smartlife.iot.PIR",
+                        "get_config", {},
+                    )
                 )
             except Exception:
-                _LOGGER.debug("PIR config not available for %s", device.get_alias())
+                _LOGGER.debug(
+                    "PIR config not available for %s",
+                    device.get_alias(),
+                )
                 data["pir_config"] = None
 
             try:
-                data["las_config"] = await device._pass_through_request(
-                    "smartlife.iot.LAS", "get_config", {}
+                data["las_config"] = (
+                    await device._pass_through_request(
+                        "smartlife.iot.LAS",
+                        "get_config", {},
+                    )
                 )
             except Exception:
-                _LOGGER.debug("LAS config not available for %s", device.get_alias())
+                _LOGGER.debug(
+                    "LAS config not available for %s",
+                    device.get_alias(),
+                )
                 data["las_config"] = None
 
             try:
-                data["las_brightness"] = await device._pass_through_request(
-                    "smartlife.iot.LAS", "get_current_brt", {}
+                data["las_brightness"] = (
+                    await device._pass_through_request(
+                        "smartlife.iot.LAS",
+                        "get_current_brt", {},
+                    )
                 )
             except Exception:
-                _LOGGER.debug("LAS brightness not available for %s", device.get_alias())
+                _LOGGER.debug(
+                    "LAS brightness N/A for %s",
+                    device.get_alias(),
+                )
                 data["las_brightness"] = None
 
             try:
-                data["dimmer_params"] = await device._pass_through_request(
-                    "smartlife.iot.dimmer", "get_dimmer_parameters", {}
+                data["dimmer_params"] = (
+                    await device._pass_through_request(
+                        "smartlife.iot.dimmer",
+                        "get_dimmer_parameters", {},
+                    )
                 )
             except Exception:
-                _LOGGER.debug("Dimmer params not available for %s", device.get_alias())
+                _LOGGER.debug(
+                    "Dimmer params N/A for %s",
+                    device.get_alias(),
+                )
                 data["dimmer_params"] = None
 
         return data

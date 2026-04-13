@@ -31,8 +31,19 @@ async def async_setup_entry(
         model = device.device_model
         parent_device_id = device.parent_device_id
 
-        if is_child_device(device):
-            # Children: refresh only (reboot affects entire physical device)
+        if device.is_tapo:
+            # Tapo: refresh only (no cloud passthrough)
+            entities.append(
+                KasaCloudRefreshButton(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            continue
+        elif is_child_device(device):
+            # Children: refresh only
             entities.append(
                 KasaCloudRefreshButton(
                     coordinator=coordinator,
@@ -43,7 +54,7 @@ async def async_setup_entry(
                 )
             )
         else:
-            # Parent/standalone: reboot + refresh
+            # Parent/standalone IOT: reboot + refresh
             entities.append(
                 KasaCloudRebootButton(
                     coordinator=coordinator,
