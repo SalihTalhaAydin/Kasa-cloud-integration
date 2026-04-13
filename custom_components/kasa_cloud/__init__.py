@@ -205,10 +205,25 @@ async def async_setup_entry(
             if parent is not None:
                 parent._is_parent = True
 
-    scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    coordinator = KasaCloudCoordinator(hass, wrapped_devices, scan_interval)
+    scan_interval = entry.options.get(
+        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL,
+    )
+    coordinator = KasaCloudCoordinator(
+        hass, wrapped_devices, scan_interval,
+    )
+    # Don't block reload on first poll — entities start
+    # unavailable and become available on the first cycle.
+    # This avoids the 90+ cloud API calls stalling setup.
     try:
-        await coordinator.async_config_entry_first_refresh()
+        await asyncio.wait_for(
+            coordinator.async_config_entry_first_refresh(),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        _LOGGER.warning(
+            "Kasa Cloud: first poll timed out after 30s, "
+            "continuing setup — data will arrive next cycle"
+        )
     except ConfigEntryNotReady:
         raise
     except Exception as err:

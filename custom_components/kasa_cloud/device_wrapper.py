@@ -230,14 +230,17 @@ class KasaDeviceWrapper:
     async def _pre_poll(self) -> None:
         """Poll this device via cloud before sending a command.
 
-        Ensures we have fresh state and confirms the device is reachable.
-        Failures are logged but do not block the command.
+        Ensures we have fresh state and confirms the device
+        is reachable. 10s timeout so commands aren't blocked.
         """
         try:
-            await self._cloud.get_sys_info()
+            await asyncio.wait_for(
+                self._cloud.get_sys_info(), timeout=10,
+            )
         except Exception as err:
             _LOGGER.debug(
-                "Pre-command poll failed for %s: %s", self.get_alias(), err
+                "Pre-command poll failed for %s: %s",
+                self.get_alias(), err,
             )
 
     # --- Command routing: power on/off ---

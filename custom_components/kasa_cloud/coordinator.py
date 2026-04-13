@@ -13,6 +13,10 @@ from .const import DOMAIN, is_dimmer_device
 
 _LOGGER = logging.getLogger(__name__)
 
+# Per-device timeout for cloud API calls (seconds).
+# The upstream library has a 600s default — way too long.
+DEVICE_POLL_TIMEOUT = 15
+
 
 class KasaCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Coordinator to poll all Kasa Cloud devices."""
@@ -38,9 +42,17 @@ class KasaCloudCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         return self._device_map.get(device_id)
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
-        """Fetch state for all devices from the cloud."""
-        tasks = [self._fetch_device_data(d) for d in self._devices]
-        device_data_list = await asyncio.gather(*tasks, return_exceptions=True)
+        """Fetch state for all devices."""
+        tasks = [
+            asyncio.wait_for(
+                self._fetch_device_data(d),
+                timeout=DEVICE_POLL_TIMEOUT,
+            )
+            for d in self._devices
+        ]
+        device_data_list = await asyncio.gather(
+            *tasks, return_exceptions=True,
+        )
 
         results: dict[str, dict[str, Any]] = {}
         errors = 0
