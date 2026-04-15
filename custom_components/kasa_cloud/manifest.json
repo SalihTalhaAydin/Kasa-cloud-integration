@@ -1,7 +1,7 @@
 {
   "domain": "kasa_cloud",
   "name": "Kasa Cloud",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "config_flow": true,
   "integration_type": "hub",
   "iot_class": "cloud_polling",

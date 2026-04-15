@@ -211,25 +211,16 @@ async def async_setup_entry(
     coordinator = KasaCloudCoordinator(
         hass, wrapped_devices, scan_interval,
     )
-    # Don't block reload on first poll — entities start
-    # unavailable and become available on the first cycle.
-    # This avoids the 90+ cloud API calls stalling setup.
-    try:
-        await asyncio.wait_for(
-            coordinator.async_config_entry_first_refresh(),
-            timeout=30,
-        )
-    except asyncio.TimeoutError:
-        _LOGGER.warning(
-            "Kasa Cloud: first poll timed out after 30s, "
-            "continuing setup — data will arrive next cycle"
-        )
-    except ConfigEntryNotReady:
-        raise
-    except Exception as err:
-        raise ConfigEntryNotReady(
-            f"First poll failed (will retry): {err}"
-        ) from err
+    # Skip the blocking first refresh entirely — HA cancels setup
+    # if it takes >60s, and with 30+ devices the cloud API calls
+    # easily exceed that.  Entities start unavailable and become
+    # available on the first coordinator cycle (scan_interval).
+    _LOGGER.info(
+        "Kasa Cloud: setup complete with %d devices, "
+        "first poll will run in %ds",
+        len(wrapped_devices),
+        scan_interval,
+    )
 
     # Start local discovery if enabled or if Tapo devices exist
     # (Tapo devices require local control — no cloud passthrough)
