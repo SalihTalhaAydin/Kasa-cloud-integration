@@ -157,6 +157,9 @@ class KasaDeviceWrapper:
             "rssi": getattr(self._local, "rssi", None),
             "on_time": getattr(self._local, "on_since", None),
         }
+        # Brightness for dimmers (e.g. HS220 via SMART protocol)
+        if hasattr(self._local, "brightness") and self._local.brightness is not None:
+            state["brightness"] = self._local.brightness
         # Energy data for P110/P115
         if hasattr(self._local, "has_emeter") and self._local.has_emeter:
             try:

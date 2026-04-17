@@ -21,7 +21,7 @@ from .const import (
     PLATFORMS,
     PROTOCOL_SMART,
     get_protocol_family,
-    is_tapo_device_type,
+    is_smart_device_type,
 )
 from .coordinator import KasaCloudCoordinator
 from .device_wrapper import KasaDeviceWrapper
@@ -39,7 +39,7 @@ def _is_supported_device(d) -> bool:
     dtype = getattr(info, "device_type", "")
     if dtype == "IOT.SMARTPLUGSWITCH":
         return True
-    if is_tapo_device_type(dtype):
+    if is_smart_device_type(dtype):
         return True
     return False
 

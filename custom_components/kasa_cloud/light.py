@@ -14,10 +14,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import is_dimmer_device, is_light_switch
+from .const import is_dimmer_device, is_light_switch, is_tapo_device_type
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_smart_kasa_dimmer(device) -> bool:
+    """Return True for SMART-protocol Kasa dimmers (e.g. new HS220)."""
+    if not device.is_tapo:
+        return False
+    model = device.device_model
+    # HS220 is a dimmer, even when using SMART protocol
+    return model.startswith("HS220")
+
+
+def _is_smart_kasa_switch(device) -> bool:
+    """Return True for SMART-protocol Kasa on/off switches."""
+    if not device.is_tapo:
+        return False
+    model = device.device_model
+    return model.startswith(("HS200", "HS210"))
 
 
 async def async_setup_entry(
@@ -31,12 +48,39 @@ async def async_setup_entry(
 
     entities: list[LightEntity] = []
     for device in devices:
-        if device.is_tapo:
-            continue
         alias = device.get_alias()
         device_id = device.device_id
         model = device.device_model
 
+        # SMART-protocol Kasa dimmers (new HS220 firmware)
+        if _is_smart_kasa_dimmer(device):
+            entities.append(
+                KasaCloudSmartDimmerLight(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            continue
+
+        # SMART-protocol Kasa on/off switches
+        if _is_smart_kasa_switch(device):
+            entities.append(
+                KasaCloudSmartOnOffLight(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            continue
+
+        # Skip Tapo plugs (handled by switch platform)
+        if device.is_tapo:
+            continue
+
+        # IOT dimmers (ES20M, KP405)
         if is_dimmer_device(device):
             entities.append(
                 KasaCloudDimmerLight(
@@ -198,6 +242,123 @@ class KasaCloudOnOffLight(KasaCloudEntity, LightEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
+        device = self._device
+        if device is None:
+            return
+        await device.power_off()
+        self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()
+
+
+class KasaCloudSmartDimmerLight(KasaCloudEntity, LightEntity):
+    """A SMART-protocol Kasa dimmer (new HS220) with brightness via local python-kasa."""
+
+    _attr_color_mode = ColorMode.BRIGHTNESS
+    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+
+    def __init__(self, coordinator, device_id, device_name, model) -> None:
+        """Initialize."""
+        super().__init__(coordinator, device_id, device_name, model)
+        self._attr_unique_id = f"kasa_cloud_{device_id}"
+        self._attr_name = None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the light is on."""
+        relay = self._sys_info.get("relay_state")
+        if relay is None:
+            return None
+        return relay == 1
+
+    @property
+    def brightness(self) -> int | None:
+        """Return the brightness (0-255)."""
+        brt = self._sys_info.get("brightness")
+        if brt is None:
+            return None
+        return round(brt * 255 / 100)
+
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"].update(updates)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on via local python-kasa device."""
+        device = self._device
+        if device is None:
+            return
+        local = device.local_device
+        if local is None:
+            _LOGGER.warning("No local device for %s — cannot control", device.get_alias())
+            return
+
+        brightness_pct = None
+        if ATTR_BRIGHTNESS in kwargs:
+            brightness_pct = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
+            brightness_pct = max(1, min(100, brightness_pct))
+
+        if brightness_pct is not None:
+            await local.set_brightness(brightness_pct)
+        else:
+            await local.turn_on()
+
+        updates = {"relay_state": 1}
+        if brightness_pct is not None:
+            updates["brightness"] = brightness_pct
+        self._update_sys_info(**updates)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off via local python-kasa device."""
+        device = self._device
+        if device is None:
+            return
+        local = device.local_device
+        if local is None:
+            _LOGGER.warning("No local device for %s — cannot control", device.get_alias())
+            return
+        await local.turn_off()
+        self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()
+
+
+class KasaCloudSmartOnOffLight(KasaCloudEntity, LightEntity):
+    """A SMART-protocol Kasa on/off switch (new HS200/HS210) via local python-kasa."""
+
+    _attr_color_mode = ColorMode.ONOFF
+    _attr_supported_color_modes = {ColorMode.ONOFF}
+
+    def __init__(self, coordinator, device_id, device_name, model) -> None:
+        """Initialize."""
+        super().__init__(coordinator, device_id, device_name, model)
+        self._attr_unique_id = f"kasa_cloud_{device_id}"
+        self._attr_name = None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the light is on."""
+        relay = self._sys_info.get("relay_state")
+        if relay is None:
+            return None
+        return relay == 1
+
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"].update(updates)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on via local python-kasa."""
+        device = self._device
+        if device is None:
+            return
+        await device.power_on()
+        self._update_sys_info(relay_state=1)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off via local python-kasa."""
         device = self._device
         if device is None:
             return

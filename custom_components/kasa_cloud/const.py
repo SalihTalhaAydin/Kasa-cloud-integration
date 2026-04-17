@@ -78,14 +78,19 @@ def is_parent_device(device) -> bool:
     return device.has_children() and not is_child_device(device)
 
 
+def is_smart_device_type(device_type: str) -> bool:
+    """Return True if the cloud device_type uses the SMART protocol."""
+    return device_type.startswith("SMART.")
+
+
 def is_tapo_device_type(device_type: str) -> bool:
     """Return True if the cloud device_type indicates a Tapo device."""
     return device_type.startswith("SMART.TAPO")
 
 
 def get_protocol_family(device_type: str) -> str:
-    """Return PROTOCOL_SMART for Tapo devices, PROTOCOL_IOT for Kasa."""
-    if is_tapo_device_type(device_type):
+    """Return PROTOCOL_SMART for SMART.* devices, PROTOCOL_IOT for IOT.*."""
+    if is_smart_device_type(device_type):
         return PROTOCOL_SMART
     return PROTOCOL_IOT
 
