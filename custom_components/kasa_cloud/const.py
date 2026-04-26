@@ -16,6 +16,7 @@ PLATFORMS: list[Platform] = [
 DIMMER_MODELS = ("ES20M", "KP405")
 LIGHT_SWITCH_MODELS = ("HS200", "HS210", "HS220")
 IOT_BULB_MODELS = ("KL400", "KL430", "KL125", "KL130", "KL135", "KL50", "KL60", "LB130")
+IOT_LIGHT_STRIP_MODELS = ("KL400", "KL430")
 
 # Protocol families
 PROTOCOL_IOT = "IOT"      # Kasa devices (cloud passthrough works)
@@ -119,6 +120,16 @@ def is_tapo_bulb(device) -> bool:
 
 
 def is_iot_bulb(device) -> bool:
-    """Return True for IOT-protocol smart bulbs/strips (KL400, KL430, etc.)."""
+    """Return True for IOT-protocol smart bulbs/strips."""
     model = get_device_model(device)
     return any(model.startswith(p) for p in IOT_BULB_MODELS)
+
+
+def is_iot_light_strip(device) -> bool:
+    """Return True for IOT light strips (KL400, KL430).
+
+    These use smartlife.iot.lightStrip module instead of
+    smartlife.iot.smartbulb.lightingservice.
+    """
+    model = get_device_model(device)
+    return any(model.startswith(p) for p in IOT_LIGHT_STRIP_MODELS)

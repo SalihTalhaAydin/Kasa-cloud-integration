@@ -19,6 +19,7 @@ from . import KasaCloudConfigEntry
 from .const import (
     is_dimmer_device,
     is_iot_bulb,
+    is_iot_light_strip,
     is_light_switch,
     is_tapo_bulb,
 )
@@ -527,9 +528,11 @@ class KasaCloudTapoBulbLight(KasaCloudEntity, LightEntity):
 
 
 class KasaCloudIotBulbLight(KasaCloudEntity, LightEntity):
-    """A Kasa IOT smart bulb/strip (KL400L5, etc.) via cloud passthrough only.
+    """A Kasa IOT smart bulb/strip via cloud passthrough only.
 
-    No local polling — uses cloud API exclusively, same as ES20M dimmers.
+    No local polling — uses cloud API exclusively.
+    Light strips (KL400, KL430) use smartlife.iot.lightStrip.
+    Other bulbs use smartlife.iot.smartbulb.lightingservice.
     """
 
     _attr_supported_color_modes = {
@@ -542,6 +545,15 @@ class KasaCloudIotBulbLight(KasaCloudEntity, LightEntity):
         super().__init__(coordinator, device_id, device_name, model)
         self._attr_unique_id = f"kasa_cloud_{device_id}"
         self._attr_name = None
+        # Light strips use a different cloud module
+        if is_iot_light_strip(self._device):
+            self._light_module = "smartlife.iot.lightStrip"
+            self._light_method = "set_light_state"
+        else:
+            self._light_module = (
+                "smartlife.iot.smartbulb.lightingservice"
+            )
+            self._light_method = "transition_light_state"
 
     @property
     def color_mode(self) -> ColorMode:
@@ -646,8 +658,8 @@ class KasaCloudIotBulbLight(KasaCloudEntity, LightEntity):
             params["transition_period"] = int(kwargs[ATTR_TRANSITION] * 1000)
 
         await device._pass_through_request(
-            "smartlife.iot.smartbulb.lightingservice",
-            "transition_light_state",
+            self._light_module,
+            self._light_method,
             params,
         )
 
@@ -662,11 +674,13 @@ class KasaCloudIotBulbLight(KasaCloudEntity, LightEntity):
 
         params: dict[str, Any] = {"on_off": 0}
         if ATTR_TRANSITION in kwargs:
-            params["transition_period"] = int(kwargs[ATTR_TRANSITION] * 1000)
+            params["transition_period"] = (
+                int(kwargs[ATTR_TRANSITION] * 1000)
+            )
 
         await device._pass_through_request(
-            "smartlife.iot.smartbulb.lightingservice",
-            "transition_light_state",
+            self._light_module,
+            self._light_method,
             params,
         )
 
