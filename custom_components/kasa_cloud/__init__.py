@@ -37,7 +37,7 @@ def _is_supported_device(d) -> bool:
         return False
     info = d.device_info
     dtype = getattr(info, "device_type", "")
-    if dtype == "IOT.SMARTPLUGSWITCH":
+    if dtype in ("IOT.SMARTPLUGSWITCH", "IOT.SMARTBULB"):
         return True
     if is_smart_device_type(dtype):
         return True

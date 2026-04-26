@@ -157,9 +157,23 @@ class KasaDeviceWrapper:
             "rssi": getattr(self._local, "rssi", None),
             "on_time": getattr(self._local, "on_since", None),
         }
-        # Brightness for dimmers (e.g. HS220 via SMART protocol)
+        # Brightness for dimmers and bulbs
         if hasattr(self._local, "brightness") and self._local.brightness is not None:
             state["brightness"] = self._local.brightness
+        # Color data for bulbs (L530E, etc.)
+        if hasattr(self._local, "is_color") and self._local.is_color:
+            hsv = getattr(self._local, "hsv", None)
+            if hsv is not None:
+                state["hue"] = hsv[0]
+                state["saturation"] = hsv[1]
+                # hsv[2] is value/brightness, already captured above
+        if hasattr(self._local, "is_variable_color_temp") and self._local.is_variable_color_temp:
+            ct = getattr(self._local, "color_temp", None)
+            if ct is not None and ct > 0:
+                state["color_temp"] = ct
+            valid_range = getattr(self._local, "valid_temperature_range", None)
+            if valid_range:
+                state["color_temp_range"] = (valid_range.min, valid_range.max)
         # Energy data for P110/P115
         if hasattr(self._local, "has_emeter") and self._local.has_emeter:
             try:

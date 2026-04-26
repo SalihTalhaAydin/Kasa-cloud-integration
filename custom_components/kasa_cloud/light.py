@@ -6,6 +6,8 @@ from typing import Any
 
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
+    ATTR_COLOR_TEMP_KELVIN,
+    ATTR_HS_COLOR,
     ATTR_TRANSITION,
     ColorMode,
     LightEntity,
@@ -14,7 +16,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import KasaCloudConfigEntry
-from .const import is_dimmer_device, is_light_switch, is_tapo_device_type
+from .const import (
+    is_dimmer_device,
+    is_iot_bulb,
+    is_light_switch,
+    is_tapo_bulb,
+)
 from .entity import KasaCloudEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,8 +83,32 @@ async def async_setup_entry(
             )
             continue
 
-        # Skip Tapo plugs (handled by switch platform)
+        # Tapo bulbs (L530E, etc.) — color/brightness/color_temp via local
+        if is_tapo_bulb(device):
+            entities.append(
+                KasaCloudTapoBulbLight(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
+            continue
+
+        # Skip other Tapo devices (plugs handled by switch platform)
         if device.is_tapo:
+            continue
+
+        # IOT smart bulbs/strips (KL400L5, etc.) — via cloud passthrough
+        if is_iot_bulb(device):
+            entities.append(
+                KasaCloudIotBulbLight(
+                    coordinator=coordinator,
+                    device_id=device_id,
+                    device_name=alias,
+                    model=model,
+                )
+            )
             continue
 
         # IOT dimmers (ES20M, KP405)
@@ -364,4 +395,280 @@ class KasaCloudSmartOnOffLight(KasaCloudEntity, LightEntity):
             return
         await device.power_off()
         self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()
+
+
+class KasaCloudTapoBulbLight(KasaCloudEntity, LightEntity):
+    """A Tapo smart bulb (L530E, etc.) controlled via local python-kasa."""
+
+    _attr_supported_color_modes = {
+        ColorMode.HS,
+        ColorMode.COLOR_TEMP,
+    }
+
+    def __init__(self, coordinator, device_id, device_name, model) -> None:
+        """Initialize."""
+        super().__init__(coordinator, device_id, device_name, model)
+        self._attr_unique_id = f"kasa_cloud_{device_id}"
+        self._attr_name = None
+
+    @property
+    def color_mode(self) -> ColorMode:
+        """Return the current color mode."""
+        ct = self._sys_info.get("color_temp")
+        if ct and ct > 0:
+            return ColorMode.COLOR_TEMP
+        return ColorMode.HS
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the light is on."""
+        relay = self._sys_info.get("relay_state")
+        if relay is None:
+            return None
+        return relay == 1
+
+    @property
+    def brightness(self) -> int | None:
+        """Return the brightness (0-255)."""
+        brt = self._sys_info.get("brightness")
+        if brt is None:
+            return None
+        return round(brt * 255 / 100)
+
+    @property
+    def hs_color(self) -> tuple[float, float] | None:
+        """Return the hue and saturation."""
+        hue = self._sys_info.get("hue")
+        sat = self._sys_info.get("saturation")
+        if hue is not None and sat is not None:
+            return (hue, sat)
+        return None
+
+    @property
+    def color_temp_kelvin(self) -> int | None:
+        """Return the color temperature in Kelvin."""
+        return self._sys_info.get("color_temp")
+
+    @property
+    def min_color_temp_kelvin(self) -> int:
+        """Return min supported color temp."""
+        ct_range = self._sys_info.get("color_temp_range")
+        if ct_range:
+            return ct_range[0]
+        return 2500
+
+    @property
+    def max_color_temp_kelvin(self) -> int:
+        """Return max supported color temp."""
+        ct_range = self._sys_info.get("color_temp_range")
+        if ct_range:
+            return ct_range[1]
+        return 6500
+
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            self.coordinator.data[self._device_id]["sys_info"].update(updates)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on via local python-kasa device."""
+        device = self._device
+        if device is None:
+            return
+        local = device.local_device
+        if local is None:
+            _LOGGER.warning("No local device for %s", device.get_alias())
+            return
+
+        updates: dict[str, Any] = {"relay_state": 1}
+
+        if ATTR_HS_COLOR in kwargs:
+            hue, sat = kwargs[ATTR_HS_COLOR]
+            brt_pct = round(kwargs.get(ATTR_BRIGHTNESS, self.brightness or 255) * 100 / 255)
+            brt_pct = max(1, min(100, brt_pct))
+            await local.set_hsv(int(hue), int(sat), brt_pct)
+            updates["hue"] = int(hue)
+            updates["saturation"] = int(sat)
+            updates["brightness"] = brt_pct
+            updates["color_temp"] = 0
+        elif ATTR_COLOR_TEMP_KELVIN in kwargs:
+            ct = kwargs[ATTR_COLOR_TEMP_KELVIN]
+            await local.set_color_temp(ct)
+            updates["color_temp"] = ct
+            if ATTR_BRIGHTNESS in kwargs:
+                brt_pct = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
+                brt_pct = max(1, min(100, brt_pct))
+                await local.set_brightness(brt_pct)
+                updates["brightness"] = brt_pct
+        elif ATTR_BRIGHTNESS in kwargs:
+            brt_pct = round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)
+            brt_pct = max(1, min(100, brt_pct))
+            await local.set_brightness(brt_pct)
+            updates["brightness"] = brt_pct
+        else:
+            await local.turn_on()
+
+        self._update_sys_info(**updates)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off via local python-kasa device."""
+        device = self._device
+        if device is None:
+            return
+        local = device.local_device
+        if local is None:
+            _LOGGER.warning("No local device for %s", device.get_alias())
+            return
+        await local.turn_off()
+        self._update_sys_info(relay_state=0)
+        self.async_write_ha_state()
+
+
+class KasaCloudIotBulbLight(KasaCloudEntity, LightEntity):
+    """A Kasa IOT smart bulb/strip (KL400L5, etc.) via cloud passthrough only.
+
+    No local polling — uses cloud API exclusively, same as ES20M dimmers.
+    """
+
+    _attr_supported_color_modes = {
+        ColorMode.HS,
+        ColorMode.COLOR_TEMP,
+    }
+
+    def __init__(self, coordinator, device_id, device_name, model) -> None:
+        """Initialize."""
+        super().__init__(coordinator, device_id, device_name, model)
+        self._attr_unique_id = f"kasa_cloud_{device_id}"
+        self._attr_name = None
+
+    @property
+    def color_mode(self) -> ColorMode:
+        """Return the current color mode."""
+        ct = self._active_light_state.get("color_temp")
+        if ct and ct > 0:
+            return ColorMode.COLOR_TEMP
+        return ColorMode.HS
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the light is on."""
+        light_state = self._sys_info.get("light_state", {})
+        if isinstance(light_state, dict):
+            on_off = light_state.get("on_off")
+            if on_off is not None:
+                return on_off == 1
+        relay = self._sys_info.get("relay_state")
+        if relay is not None:
+            return relay == 1
+        return None
+
+    @property
+    def brightness(self) -> int | None:
+        """Return the brightness (0-255)."""
+        brt = self._active_light_state.get("brightness")
+        if brt is None:
+            return None
+        return round(brt * 255 / 100)
+
+    @property
+    def hs_color(self) -> tuple[float, float] | None:
+        """Return the hue and saturation."""
+        ls = self._active_light_state
+        hue = ls.get("hue")
+        sat = ls.get("saturation")
+        if hue is not None and sat is not None:
+            return (hue, sat)
+        return None
+
+    @property
+    def color_temp_kelvin(self) -> int | None:
+        """Return the color temperature in Kelvin."""
+        return self._active_light_state.get("color_temp")
+
+    @property
+    def min_color_temp_kelvin(self) -> int:
+        return 2500
+
+    @property
+    def max_color_temp_kelvin(self) -> int:
+        return 9000
+
+    @property
+    def _active_light_state(self) -> dict:
+        """Return the active light state dict.
+
+        IOT bulbs nest state in light_state. When off, the active params
+        are in light_state.dft_on_state instead.
+        """
+        ls = self._sys_info.get("light_state", {})
+        if not isinstance(ls, dict):
+            return {}
+        if ls.get("on_off") == 0:
+            return ls.get("dft_on_state", ls)
+        return ls
+
+    def _update_sys_info(self, **updates: Any) -> None:
+        """Optimistically update sys_info in coordinator data."""
+        if self.coordinator.data and self._device_id in self.coordinator.data:
+            si = self.coordinator.data[self._device_id]["sys_info"]
+            if "light_state" in si:
+                si["light_state"].update(updates)
+            else:
+                si.update(updates)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on via cloud passthrough."""
+        device = self._device
+        if device is None:
+            return
+
+        params: dict[str, Any] = {"on_off": 1}
+
+        if ATTR_HS_COLOR in kwargs:
+            hue, sat = kwargs[ATTR_HS_COLOR]
+            params["hue"] = int(hue)
+            params["saturation"] = int(sat)
+            params["color_temp"] = 0
+            if ATTR_BRIGHTNESS in kwargs:
+                params["brightness"] = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+
+        if ATTR_COLOR_TEMP_KELVIN in kwargs:
+            params["color_temp"] = kwargs[ATTR_COLOR_TEMP_KELVIN]
+            if ATTR_BRIGHTNESS in kwargs:
+                params["brightness"] = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+
+        if ATTR_BRIGHTNESS in kwargs and "brightness" not in params:
+            params["brightness"] = max(1, min(100, round(kwargs[ATTR_BRIGHTNESS] * 100 / 255)))
+
+        if ATTR_TRANSITION in kwargs:
+            params["transition_period"] = int(kwargs[ATTR_TRANSITION] * 1000)
+
+        await device._pass_through_request(
+            "smartlife.iot.smartbulb.lightingservice",
+            "transition_light_state",
+            params,
+        )
+
+        self._update_sys_info(**params)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off via cloud passthrough."""
+        device = self._device
+        if device is None:
+            return
+
+        params: dict[str, Any] = {"on_off": 0}
+        if ATTR_TRANSITION in kwargs:
+            params["transition_period"] = int(kwargs[ATTR_TRANSITION] * 1000)
+
+        await device._pass_through_request(
+            "smartlife.iot.smartbulb.lightingservice",
+            "transition_light_state",
+            params,
+        )
+
+        self._update_sys_info(**params)
         self.async_write_ha_state()

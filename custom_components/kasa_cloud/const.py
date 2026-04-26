@@ -15,6 +15,7 @@ PLATFORMS: list[Platform] = [
 
 DIMMER_MODELS = ("ES20M", "KP405")
 LIGHT_SWITCH_MODELS = ("HS200", "HS210", "HS220")
+IOT_BULB_MODELS = ("KL400", "KL430", "KL125", "KL130", "KL135", "KL50", "KL60", "LB130")
 
 # Protocol families
 PROTOCOL_IOT = "IOT"      # Kasa devices (cloud passthrough works)
@@ -65,7 +66,11 @@ def is_light_switch(device) -> bool:
 
 def is_plug_device(device) -> bool:
     """Return True for smart plugs (KP200, etc.) — use switch platform."""
-    return not is_dimmer_device(device) and not is_light_switch(device)
+    return (
+        not is_dimmer_device(device)
+        and not is_light_switch(device)
+        and not is_iot_bulb(device)
+    )
 
 
 def is_child_device(device) -> bool:
@@ -105,3 +110,15 @@ def is_tapo_energy_plug(device) -> bool:
     """Return True for Tapo plugs with energy monitoring (P110, P115)."""
     model = get_device_model(device)
     return model.startswith(("P110", "P115"))
+
+
+def is_tapo_bulb(device) -> bool:
+    """Return True for Tapo smart bulbs (L5xx, L6xx, L9xx)."""
+    model = get_device_model(device)
+    return any(model.startswith(p) for p in TAPO_BULB_MODELS)
+
+
+def is_iot_bulb(device) -> bool:
+    """Return True for IOT-protocol smart bulbs/strips (KL400, KL430, etc.)."""
+    model = get_device_model(device)
+    return any(model.startswith(p) for p in IOT_BULB_MODELS)
